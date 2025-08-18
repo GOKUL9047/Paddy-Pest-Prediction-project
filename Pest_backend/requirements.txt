@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+openai
+torch
+torchvision
+python-multipart
+python-dotenv
+pillow
