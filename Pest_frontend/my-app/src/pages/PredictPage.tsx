@@ -1,10 +1,11 @@
 // --- src/pages/PredictPage.tsx ---
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import PestPredictionService from '../services/PestPredictionService';
 import type { PredictionResult } from '../services/PestPredictionService';
-
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface PredictPageProps {
   db: Firestore | null;
@@ -20,6 +21,9 @@ const PredictPage: React.FC<PredictPageProps> = ({ db, userId, isAuthReady, appI
   const [loading, setLoading] = useState<boolean>(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // for clearing the native file input
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files ? event.target.files[0] : null;
@@ -53,8 +57,12 @@ const PredictPage: React.FC<PredictPageProps> = ({ db, userId, isAuthReady, appI
 
     try {
       const result = await PestPredictionService.predict(imageFile, textInput);
+      
+      // Set result first, then clear loading
       setPredictionResult(result);
+      setLoading(false);
 
+      // Save to history after setting result
       await PestPredictionService.savePredictionToHistory(db, userId, appId, {
         prediction: result.prediction,
         confidence: result.confidence,
@@ -65,9 +73,22 @@ const PredictPage: React.FC<PredictPageProps> = ({ db, userId, isAuthReady, appI
     } catch (error) {
       console.error('Prediction failed:', error);
       setErrorMessage('Failed to get prediction. Please try again.');
-    } finally {
       setLoading(false);
     }
+  };
+
+  // Clean reset function without page reload
+  const handleReset = () => {
+    setPredictionResult(null);
+    setImageFile(null);
+    setImagePreview(null);
+    setTextInput('');
+    setErrorMessage('');
+    setLoading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // optional: scroll to top of form
+    window.scrollTo({ top: 0, behavior: 'smooth' as ScrollBehavior });
   };
 
   return (
@@ -85,6 +106,7 @@ const PredictPage: React.FC<PredictPageProps> = ({ db, userId, isAuthReady, appI
             </label>
             <div className="mt-2 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl cursor-pointer hover:border-green-500 transition duration-300 ease-in-out">
               <input
+                ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 onChange={handleImageChange}
@@ -137,46 +159,61 @@ const PredictPage: React.FC<PredictPageProps> = ({ db, userId, isAuthReady, appI
               <p className="text-red-600 text-sm mt-2 text-center">{errorMessage}</p>
             )}
 
+            {/* Button: Get Prediction → Predicting… → Predict Another */}
             <button
-              onClick={handleSubmit}
-              disabled={loading || !imageFile || !isAuthReady}
+              onClick={predictionResult ? handleReset : handleSubmit}
+              disabled={loading || (!imageFile && !predictionResult) || !isAuthReady}
               className={`w-full py-3 px-6 rounded-full text-white font-bold shadow-lg transform transition duration-300 ease-in-out
-                ${loading || !imageFile || !isAuthReady
+                ${loading
                   ? 'bg-gray-400 cursor-not-allowed'
+                  : predictionResult && !loading
+                  ? 'bg-blue-600 hover:bg-blue-700 hover:scale-105'
                   : 'bg-green-600 hover:bg-green-700 hover:scale-105'
                 }`}
             >
-              {loading ? 'Predicting...' : 'Get Prediction'}
+              {loading
+                ? 'Predicting...'
+                : predictionResult && !loading
+                ? 'Predict Another'
+                : 'Get Prediction'}
             </button>
           </div>
 
           {/* Results Section */}
           <div className="flex flex-col space-y-6">
             <h2 className="text-2xl font-bold text-green-800 mb-4">Results:</h2>
-            {loading && (
+
+            {/* Show analyzing only before result arrives */}
+            {loading && !predictionResult && (
               <div className="flex items-center justify-center h-48">
                 <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-500"></div>
                 <p className="ml-4 text-gray-600 text-lg">Analyzing...</p>
               </div>
             )}
 
+            {/* Render result (Markdown-enabled) */}
             {predictionResult && (
               <div className="bg-green-50 p-6 rounded-xl shadow-md border border-green-200">
                 <h3 className="text-xl font-semibold text-green-700 mb-3">Prediction:</h3>
                 <p className="text-3xl font-extrabold text-green-800 mb-2">
                   {predictionResult.prediction}
                 </p>
-                {predictionResult.confidence && (
+                {typeof predictionResult.confidence === 'number' && (
                   <p className="text-lg text-gray-600">
                     Confidence: <span className="font-bold">{Math.round(predictionResult.confidence * 100)}%</span>
                   </p>
                 )}
                 {predictionResult.explanation && (
-                  <p className="text-gray-700 mt-3">{predictionResult.explanation}</p>
+                  <div className="prose prose-green max-w-none mt-3 text-gray-800">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {predictionResult.explanation}
+                    </ReactMarkdown>
+                  </div>
                 )}
               </div>
             )}
 
+            {/* Empty state */}
             {!loading && !predictionResult && !errorMessage && (
               <div className="bg-gray-100 p-6 rounded-xl shadow-md text-center text-gray-500">
                 <p>Upload an image and click "Get Prediction" to see results here.</p>

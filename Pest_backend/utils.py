@@ -1,3 +1,4 @@
+
 import torch
 from torchvision import transforms, models
 from PIL import Image
@@ -84,7 +85,8 @@ def ask_openai(prompt: str) -> str:
         base_url="https://openrouter.ai/api/v1",  # API endpoint
         api_key=API_KEY,                          # API key from environment
         model="gpt-3.5-turbo",                    # Chosen model
-        temperature=0.7                           # Response creativity
+        temperature=0.5,                           # Response creativity
+        max_tokens=512                  # Max tokens in response
     )
     response = LLM.invoke(prompt)  # Send prompt and get response
     return response.content.strip()  # Return only the content text (no metadata)

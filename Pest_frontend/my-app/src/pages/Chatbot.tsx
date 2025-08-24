@@ -1,11 +1,27 @@
-// --- src/pages/Chatbot.tsx ---
-import React, { useState } from 'react'; // <-- import useState properly
+import React, { useState } from 'react';
 
-// Define types for chat messages
 interface ChatMessage {
   sender: 'user' | 'bot';
   text: string;
 }
+
+// Simple markdown parser for basic formatting
+const parseMarkdown = (text: string): string => {
+  return text
+    // Headers
+    .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold text-gray-800 mt-3 mb-2">$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold text-gray-800 mt-4 mb-2">$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold text-gray-800 mt-4 mb-3">$1</h1>')
+    
+    // Bold text
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+    
+    // Bullet points
+    .replace(/^- (.*$)/gim, '<li class="ml-4 mb-1">• $1</li>')
+    
+    // Line breaks
+    .replace(/\n/g, '<br />');
+};
 
 const Chatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -17,35 +33,54 @@ const Chatbot: React.FC = () => {
     if (newMessage.trim() === '') return;
 
     const userMessage: ChatMessage = { sender: 'user', text: newMessage };
-    setMessages((prevMessages: ChatMessage[]) => [...prevMessages, userMessage]); // type added
+    setMessages((prevMessages) => [...prevMessages, userMessage]);
     setNewMessage('');
     setIsTyping(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-      const botResponseText: string = `Hello! You said: "${userMessage.text}". I am a simple chatbot. How can I assist you further?`;
+      // Send request to FastAPI backend
+      const formData = new FormData();
+      formData.append('text', userMessage.text);
 
-      setMessages((prevMessages: ChatMessage[]) => [
+      const response = await fetch('http://localhost:8000/chat/', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Failed to connect to backend');
+      const data = await response.json();
+
+      const botResponseText: string = data.response || "Sorry, I couldn't generate a response.";
+
+      setMessages((prevMessages) => [
         ...prevMessages,
-        { sender: 'bot', text: botResponseText }
+        { sender: 'bot', text: botResponseText },
       ]);
     } catch (error) {
       console.error('Chatbot backend error:', error);
-      setMessages((prevMessages: ChatMessage[]) => [
+      setMessages((prevMessages) => [
         ...prevMessages,
-        { sender: 'bot', text: 'Sorry, I could not connect to the backend.' }
+        { sender: 'bot', text: '⚠️ Sorry, could not connect to the backend.' },
       ]);
     } finally {
       setIsTyping(false);
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   return (
     <div className="fixed bottom-4 right-4 z-50">
+      {/* Chat Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transform hover:scale-110 transition duration-300 ease-in-out focus:outline-none focus:ring-4 focus:ring-blue-300"
-        aria-label="Toggle Chatbot"
+        className="bg-green-600 hover:bg-green-700 text-white p-4 rounded-full shadow-lg transform hover:scale-110 transition duration-300 ease-in-out focus:outline-none focus:ring-4 focus:ring-green-300"
+        aria-label="Toggle Agricultural Assistant"
       >
         <svg
           className="w-8 h-8"
@@ -62,63 +97,127 @@ const Chatbot: React.FC = () => {
         </svg>
       </button>
 
+      {/* Chat Window */}
       {isOpen && (
-        <div className="bg-white rounded-xl shadow-2xl w-80 h-96 flex flex-col mt-4 border border-gray-200">
-          <div className="bg-blue-500 text-white p-3 rounded-t-xl text-center font-bold">
-            PestPredict Chat
+        <div className="bg-white rounded-xl shadow-2xl w-[500px] h-[600px] flex flex-col mt-4 border border-gray-200">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-t-xl text-center">
+            <div className="flex items-center justify-center space-x-2">
+              <span className="text-2xl">🌾</span>
+              <div>
+                <h3 className="font-bold text-lg">Agricultural Assistant</h3>
+                <p className="text-sm text-green-100">Ask about farming, crops & pests</p>
+              </div>
+            </div>
           </div>
-          <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
+          
+          {/* Messages Area */}
+          <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-gray-50">
             {messages.length === 0 && (
-              <p className="text-gray-500 text-center text-sm mt-4">Ask me anything!</p>
+              <div className="text-center mt-8">
+                <div className="text-6xl mb-4">🌱</div>
+                <p className="text-gray-600 text-sm mb-2">Welcome to Agricultural Assistant!</p>
+                <p className="text-gray-500 text-xs">Ask me about farming, pests, crops, or agricultural practices.</p>
+              </div>
             )}
-            {messages.map((msg: ChatMessage, index: number) => ( // types added
+            
+            {messages.map((msg, index) => (
               <div
                 key={index}
-                className={`mb-2 p-2 rounded-lg max-w-[80%] ${
-                  msg.sender === 'user' ? 'bg-blue-100 self-end ml-auto' : 'bg-gray-100 self-start mr-auto'
-                }`}
+                className={`mb-4 ${msg.sender === 'user' ? 'flex justify-end' : 'flex justify-start'}`}
               >
-                <p className="text-sm text-gray-800">{msg.text}</p>
+                <div
+                  className={`max-w-[85%] p-3 rounded-lg shadow-sm ${
+                    msg.sender === 'user' 
+                      ? 'bg-green-500 text-white rounded-br-none' 
+                      : 'bg-white border border-gray-200 rounded-bl-none'
+                  }`}
+                >
+                  {msg.sender === 'bot' ? (
+                    <div 
+                      className="text-sm text-gray-800 prose prose-sm max-w-none"
+                      dangerouslySetInnerHTML={{ 
+                        __html: parseMarkdown(msg.text) 
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm">{msg.text}</p>
+                  )}
+                </div>
               </div>
             ))}
+            
+            {/* Typing Indicator */}
             {isTyping && (
-              <div className="mb-2 p-2 rounded-lg bg-gray-100 self-start mr-auto">
-                <p className="text-sm text-gray-500 italic">Bot is typing...</p>
+              <div className="flex justify-start mb-4">
+                <div className="bg-white border border-gray-200 p-3 rounded-lg rounded-bl-none shadow-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                    </div>
+                    <span className="text-xs text-gray-500">Agricultural expert is thinking...</span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-          <div className="p-3 border-t border-gray-200 flex">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={(e) => { if (e.key === 'Enter') handleSendMessage(); }}
-              className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-800"
-              placeholder="Type your message..."
-            />
-            <button
-              onClick={handleSendMessage}
-              className="ml-2 bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-            >
-              Send
-            </button>
+          
+          {/* Input Area */}
+          <div className="p-4 border-t border-gray-200 bg-white rounded-b-xl">
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent text-gray-800 text-sm"
+                placeholder="Ask about crops, pests, farming..."
+                disabled={isTyping}
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={isTyping || newMessage.trim() === ''}
+                className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 transition duration-200"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       )}
+      
+      {/* Custom Styles */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
+          width: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: #f1f1f1;
+          background: #f1f5f9;
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #888;
+          background: #10b981;
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #555;
+          background: #059669;
+        }
+        
+        .prose h1, .prose h2, .prose h3 {
+          margin-top: 1rem;
+          margin-bottom: 0.5rem;
+        }
+        
+        .prose li {
+          margin-bottom: 0.25rem;
+        }
+        
+        .prose strong {
+          font-weight: 600;
         }
       `}</style>
     </div>
